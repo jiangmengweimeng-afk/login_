@@ -1,20 +1,57 @@
-from flask import request, Blueprint
-from.service import validate_password
-from app import app
+from flask import Blueprint, jsonify, request
+from .service import validate_password, register_user
 
-user_bp = Blueprint('user', __name__, url_prefix='/user')
 
-@user_bp.route('/')
-def user_index():
-    return 'User Index'
+access_record = Blueprint('access_record', __name__, url_prefix='/access_record')
 
-@user_bp.route('profile/<username>')
-def user_profile(username):
-    return f'User Profile: {username}'
-
-@user_bp.route('/login/', methods=['POST'])
+@access_record.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
+
+    if not data:
+        return jsonify({'code': 400, 'message': 'no json data no provided'}), 400
+    
     username = data.get('username')
     password = data.get('password')
-    return validate_password(username, password)
+
+    if not username or not password:
+        return jsonify({
+            'code': 400,
+            'message': 'username and password are required'
+        }), 400
+    
+    result = validate_password(username, password)
+
+    if result['success']:
+        return jsonify({
+            'code': 200,
+            'message': 'login successful',
+            'data': result['user']
+        }), 200
+    else:
+        return jsonify({
+            'code': 401,
+            'message': result['message']
+        }), 401
+
+@access_record.route('/register', methods=['POST'])
+def register():
+    data = request.get_json()
+
+    if not data:
+        return jsonify({
+            'code': 400,
+            'message': 'no json data no provided'
+        }), 400
+    
+    username = data.get('username')
+    password = data.get('password')
+
+    if not username or not password:
+        
+
+
+
+
+    
+    
