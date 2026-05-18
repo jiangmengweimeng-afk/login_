@@ -1,15 +1,17 @@
-from flask import Blueprint, jsonify, request, make_response
-from .service import validate_password, register_user, generate_token
-from common.auth import login_required, create_access_token, create_refresh_token
+from flask import Blueprint, jsonify, request, make_response, current_app
+from .service import validate_password, register_user
+from common.auth import login_required, create_access_token, create_refresh_token, generate_token
 import logging
 import jwt
 
 logger = logging.getLogger(__name__)
 
 access_record = Blueprint('access_record', __name__, url_prefix='/access_record')
+print(f"Blueprint 'access_record' created successfully")
 
-@access_record.route('/login', methods=['POST'])
-def login():
+@access_record.route('/login/password', methods=['POST'])
+def login_password():
+    # print("🔴 后端接收到的原始数据：", request.get_data())
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
@@ -19,28 +21,27 @@ def login():
     result = validate_password(username, password)
     if not result['success']:
         return jsonify({'code': 401, 'message': result['message']}), 401
+    
     user = result['user']
-
     access_token = create_access_token(user['id'])
     refresh_token = create_refresh_token(user['id'])
 
     response = make_response(jsonify({
         'access_token': access_token,
-        'refresh_token': refresh_token
     }))
 
     response.set_cookie(
         key='refresh_token',
         value=refresh_token,
         httponly=True,
-        secure=True,
+        secure=False,
         samesite='Lax',
         max_age=7*24*60*60
     )
     return response
 
-@access_record.route('/login', methods=['POST'])
-def login():
+@access_record.route('/login/code', methods=['POST'])
+def login_code():
     ip = request.remote_addr
     data = request.get_json()
     username = data.get('username') if data else None
@@ -61,18 +62,17 @@ def login():
         }), 400
     
     result = validate_password(username, password)
-    
+
 
     if result['success']:
         logger.info(f'登录成功 - IP: {ip} - 用户名: {username}')
-        token = generate_token(user_id=result['user']['id'], username=result['user']['username'])
-        access_token = create_access_token(user.id)
-        refresh_token = create_refresh_token(user.id)
+        # token = generate_token(user_id=result['user']['id'], username=result['user']['username'])
+        user_info =  result['user']
+        access_token, refresh_token = generate_token(user_info['id'])
         return jsonify({
             'code': 200,
             'message': 'login successful',
-            'data': result['user'],
-            'token': token,
+            'data': user_info,
             'access_token': access_token,
             'refresh_token': refresh_token
         }), 200
@@ -83,6 +83,14 @@ def login():
             'code': 401,
             'message': result['message']
         }), 401
+
+@access_record.route('/list', methods=['GET'])
+def get_access_list():
+    data = [
+        {"id": 1, "name": "测试数据1"},
+        {"id": 2, "name": "测试数据2"}
+    ]
+    return jsonify({"code": 200, "data": data})
 
 @access_record.route('/register', methods=['POST'])
 def register():
@@ -153,7 +161,7 @@ def refresh_access_token():
             key='refresh_token',
             value=new_refresh_token,
             httponly=True,
-            sercure=True,
+            secure=False,
             samesite='Lax',
             max_age=7*24*60*60
         )

@@ -1,6 +1,6 @@
 import os
 
-SECRET_KEY = os.environ.get('JWT_SECRET_KEY', os.environ.get('SECRET_KEY'))
+SECRET_KEY = os.environ.get('JWT_SECRET_KEY', os.environ.get('SECRET_KEY', 'dev-secret-key-for-testing-only'))
 
 class Config:
     SECRET_KEY = SECRET_KEY

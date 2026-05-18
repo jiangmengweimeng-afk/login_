@@ -28,18 +28,40 @@ def create_refresh_token(user_id):
     db.session.commit()
     return token
 
+def generate_token(user_id):
+    access_token = create_access_token(user_id)
+    refresh_token = create_refresh_token(user_id)
+
+    return access_token, refresh_token
+
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        token = request.headers.get('Authorization', '').split(' ')[1]
+        token = None
+        
+        if 'Authorization' in request.headers:
+            auth_header = request.headers['Authorization']
+            if not auth_header:
+                return jsonify({'message': 'Authorization 不存在'}), 401
+            parts = auth_header.split()
+            if len(parts) != 2 or parts[0] != 'Bearer':
+                return jsonify({'message': '认证头格式错误'}), 401
+            token = parts[1]
+
         if not token:
-            return jsonify({'message': '未登录 请登录后再访问'}), 401
+            return jsonify({'message': '缺少令牌 请登录后访问'}), 401
         try:
             data = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=["HS256"])
-            request.current_user = data
+            user = User.query.get(data['user_id'])
+            if not user:
+                return jsonify({'message': '用户不存在'}), 401
+            request.current_user = {
+                "id": user.id,
+                "username": user.username
+            }
         except jwt.ExpiredSignatureError:
             return jsonify({'message': '令牌过期 请重新登录'}), 401
         except jwt.InvalidTokenError:
-            return jsonify({'message': '无效令牌 非法访问'}), 401
+            return jsonify({'message': '令牌无效 非法访问'}), 401
         return f(*args, **kwargs)
     return decorated
