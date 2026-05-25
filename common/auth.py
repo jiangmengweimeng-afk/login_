@@ -28,6 +28,25 @@ def create_refresh_token(user_id):
     db.session.commit()
     return token
 
+def varify_refresh_token(token):
+    try:
+        payload = jwt.decode(
+            token,
+            current_app.config['SECRET_KEY'],
+            algorithms=['HS256'],
+            options={'verify_exp': True},
+        )
+        if payload.get('token_type') != 'refresh':
+            raise Exception('Invalid token type: expected refresh token')
+        return {
+            "user_id": payload.get('sub'),
+            "username": payload.get('username')
+        }
+    except jwt.ExpiredSignatureError:
+        raise Exception('Refresh token has expired')
+    except jwt.InvalidTokenError as e:
+        raise Exception(f"Invalid refresh token: {str(e)}")
+
 def generate_token(user_id):
     access_token = create_access_token(user_id)
     refresh_token = create_refresh_token(user_id)

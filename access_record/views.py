@@ -1,6 +1,7 @@
-from flask import Blueprint, jsonify, request, make_response, current_app
+from flask import Blueprint, jsonify, request, make_response
+from flask_jwt_extended import decode_token, create_access_token, create_refresh_token
 from .service import validate_password, register_user
-from common.auth import login_required, create_access_token, create_refresh_token, generate_token
+from common.auth import login_required, create_access_token, create_refresh_token, generate_token, varify_refresh_token
 import logging
 import jwt
 
@@ -137,20 +138,23 @@ def profile():
         'message': f'你好 欢迎 {user["username"]} 来到后台 dashboard',
         'user': user,
         'token': request.headers.get('Authorization')
-        })
+        }), 200
 
+# @login_required
 @access_record.route('/api/refresh', methods=['POST'])
 def refresh_access_token():
     refresh_token = request.cookies.get('refresh_token')
+
     if not refresh_token:
         return jsonify({'message': 'Refresh token missing'}), 401
     
     try:
-        payload = jwt.decode(refresh_token, current_app.config['SECRET_KEY'], algorithms=['HS256'])
-        username = payload['sub']
-        user_id = payload['user_id']
-        new_access_token, new_refresh_token = generate_token(user_id, username)
-        
+        payload = decode_token(refresh_token, allow_expired=False)
+
+        user_id = payload['sub']
+        new_access_token = create_access_token(identity=user_id)
+        new_refresh_token = create_refresh_toen(identity=user_id)
+       
         response = make_response(jsonify({
             'refresh_token': new_refresh_token,
             'access_token': new_access_token,
@@ -166,7 +170,10 @@ def refresh_access_token():
             max_age=7*24*60*60
         )
         return response
+    
     except jwt.ExpiredSignatureError:
         return jsonify({'message': 'Refresh token 已过期 请重新登录'}),401
     except jwt.InvalidTokenError:
         return jsonify({'message': '无效的 Refresh token'}), 401
+
+
