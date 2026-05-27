@@ -29,6 +29,7 @@ def login_password():
 
     response = make_response(jsonify({
         'access_token': access_token,
+        'refresh_token': refresh_token
     }))
 
     response.set_cookie(
@@ -143,29 +144,54 @@ def profile():
 # @login_required
 @access_record.route('/api/refresh', methods=['POST'])
 def refresh_access_token():
-    refresh_token = request.cookies.get('refresh_token')
-
-    if not refresh_token:
-        return jsonify({'message': 'Refresh token missing'}), 401
+    # 获取旧的Token, 从cookie 拿到字符串
+    old_refresh_token = request.cookies.get('refresh_token')
+    if old_refresh_token:
+        return jsonify({'massage': 'Refresh token missing'}), 401
     
     try:
-        payload = decode_token(refresh_token, allow_expired=False)
-
+        # 尝试解码JWT， 拿到user_id
+        payload = decode_token(old_refresh_token, allow_expired=False)
         user_id = payload['sub']
+
+        #查库验证，使用SQLAlchemy 查找 删除以及提交，token 字段必须等于请求中传来的Refresh token 字符串
+        #user_id 必须等于解码出来的user_id 防止用户A拿用户B的token碰瓷
+        valid_token_obj = RefreshToken.query.filter_by(
+            user_id=user_id,
+            token=old_refresh_token
+        ).first()
+
+        #查抄valid_token_obj是否存在 为的是防止重放攻击，确保一个Refresh Token 只能使用一次，以及保持数据干净
+        if not valid_token_obj:
+            return jsonify({'message': 'Token已经在数据库失效, 请重新登录'}), 401
+        
+        #生成新的token
         new_access_token = create_access_token(identity=user_id)
-        new_refresh_token = create_refresh_toen(identity=user_id)
-       
+        new_refresh_token = create_refresh_token(identity=user_id)
+
+        db.session.delete(valid_token_obj)
+
+        new_token_obj = RefreshToken(
+            user_id=user_id,
+            token=new_refresh_token
+        )
+        #滚动刷新
+        db.session.add(new_token_obj)
+        db.session.commit()
+
+        #创建响应体
         response = make_response(jsonify({
             'refresh_token': new_refresh_token,
             'access_token': new_access_token,
             'token_type': 'Bearer'
         }))
 
+        #注意开发环境是False 生产环境是True
         response.set_cookie(
             key='refresh_token',
             value=new_refresh_token,
             httponly=True,
-            secure=False,
+            secure=True,
             samesite='Lax',
             max_age=7*24*60*60
         )
@@ -175,5 +201,4 @@ def refresh_access_token():
         return jsonify({'message': 'Refresh token 已过期 请重新登录'}),401
     except jwt.InvalidTokenError:
         return jsonify({'message': '无效的 Refresh token'}), 401
-
 

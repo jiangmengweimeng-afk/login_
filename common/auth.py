@@ -48,7 +48,7 @@ def varify_refresh_token(token):
         raise Exception(f"Invalid refresh token: {str(e)}")
 
 def generate_token(user_id):
-    access_token = create_access_token(user_id)
+    access_token  = create_access_token(user_id)
     refresh_token = create_refresh_token(user_id)
 
     return access_token, refresh_token
