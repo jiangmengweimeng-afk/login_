@@ -1,0 +1,204 @@
+from flask import Blueprint, jsonify, request, make_response
+from flask_jwt_extended import decode_token, create_access_token, create_refresh_token
+from .service import validate_password, register_user
+from common.auth import login_required, create_access_token, create_refresh_token, generate_token, varify_refresh_token
+import logging
+import jwt
+
+logger = logging.getLogger(__name__)
+
+access_record = Blueprint('access_record', __name__, url_prefix='/access_record')
+print(f"Blueprint 'access_record' created successfully")
+
+@access_record.route('/login/password', methods=['POST'])
+def login_password():
+    # print("🔴 后端接收到的原始数据：", request.get_data())
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+    if not username or not password:
+        return jsonify({'code': 400, 'message': '用户名和密码不能为空'}), 400
+    
+    result = validate_password(username, password)
+    if not result['success']:
+        return jsonify({'code': 401, 'message': result['message']}), 401
+    
+    user = result['user']
+    access_token = create_access_token(user['id'])
+    refresh_token = create_refresh_token(user['id'])
+
+    response = make_response(jsonify({
+        'access_token': access_token,
+        'refresh_token': refresh_token
+    }))
+
+    response.set_cookie(
+        key='refresh_token',
+        value=refresh_token,
+        httponly=True,
+        secure=False,
+        samesite='Lax',
+        max_age=7*24*60*60
+    )
+    return response
+
+@access_record.route('/login/code', methods=['POST'])
+def login_code():
+    ip = request.remote_addr
+    data = request.get_json()
+    username = data.get('username') if data else None
+    logger.info(f'收到登录请求 - IP: {ip} - 用户名: {username}')
+   
+
+    if not data:
+        return jsonify({'code': 400, 'message': 'no json data no provided'}), 400
+    
+    username = data.get('username')
+    password = data.get('password')
+
+    if not username or not password:
+        logger.warning(f'参数验证失败 - IP: {ip} - 原因: 用户名或密码为空')
+        return jsonify({
+            'code': 400,
+            'message': 'username and password are required'
+        }), 400
+    
+    result = validate_password(username, password)
+
+
+    if result['success']:
+        logger.info(f'登录成功 - IP: {ip} - 用户名: {username}')
+        # token = generate_token(user_id=result['user']['id'], username=result['user']['username'])
+        user_info =  result['user']
+        access_token, refresh_token = generate_token(user_info['id'])
+        return jsonify({
+            'code': 200,
+            'message': 'login successful',
+            'data': user_info,
+            'access_token': access_token,
+            'refresh_token': refresh_token
+        }), 200
+    else:
+        error_msg = result.get('message', '未知错误')
+        logger.warning(f'登录失败 - IP:{ip} - 用户名: {username}, 原因: {error_msg}')
+        return jsonify({
+            'code': 401,
+            'message': result['message']
+        }), 401
+
+@access_record.route('/list', methods=['GET'])
+def get_access_list():
+    data = [
+        {"id": 1, "name": "测试数据1"},
+        {"id": 2, "name": "测试数据2"}
+    ]
+    return jsonify({"code": 200, "data": data})
+
+@access_record.route('/register', methods=['POST'])
+def register():
+    data = request.get_json()
+
+    if not data:
+        return jsonify({'code': 400, 'message': 'no json data no provided'}), 400
+    
+    username = data.get('username')
+    password = data.get('password')
+    logger.info(f'收到注册请求 - 用户名: {username}')
+
+    if not username or not password:
+        logger.warning(f'注册参数验证失败 - 用户名: {username} - 原因: 密码和用户名不能为空')
+        return jsonify({'code': 400, 'message': 'Username and password cannot be empty'}), 400
+    
+    if  not username.strip() or not password.strip():
+        return jsonify({'code': 400, 'message': 'Username and password cannot be empty string'}), 400
+    
+    if len(password) < 6:
+        logger.warning(f'注册失败 - 用户名: {username} - 原因: 密码长度不足')
+        return jsonify({'code': 400, 'message': '密码长度不符合要求'}), 400
+    
+    result = register_user(username, password)
+
+    if result['success'] is True:
+        logger.info(f'注册成功 - 用户名: {username}')
+        return jsonify({'code': 201, 'message': 'Register successful', 'data': result['user']}), 201
+    elif result['success'] is False:
+        if 'already exists' in result['message'].lower():
+            logger.warning(f'注册失败 - 用户名： {username} - 原因： 用户名已经存在')
+            return jsonify({'code': 409, 'message': 'Username already exists'}), 409
+        else:
+            logger.warning(f'注册失败 - 用户名: {username} - 原因: 服务器内部错误')
+            return jsonify({'code': 500, 'message': 'Internal server error'}), 500
+    else:
+        return jsonify({'code': 400, 'message': 'others reason'}), 400
+    
+@access_record.route('/profile', methods=['GET'])
+@login_required
+def profile():
+    user = request.current_user
+    return jsonify({
+        'message': f'你好 欢迎 {user["username"]} 来到后台 dashboard',
+        'user': user,
+        'token': request.headers.get('Authorization')
+        }), 200
+
+# @login_required
+@access_record.route('/api/refresh', methods=['POST'])
+def refresh_access_token():
+    # 获取旧的Token, 从cookie 拿到字符串
+    old_refresh_token = request.cookies.get('refresh_token')
+    if old_refresh_token:
+        return jsonify({'massage': 'Refresh token missing'}), 401
+    
+    try:
+        # 尝试解码JWT， 拿到user_id
+        payload = decode_token(old_refresh_token, allow_expired=False)
+        user_id = payload['sub']
+
+        #查库验证，使用SQLAlchemy 查找 删除以及提交，token 字段必须等于请求中传来的Refresh token 字符串
+        #user_id 必须等于解码出来的user_id 防止用户A拿用户B的token碰瓷
+        valid_token_obj = RefreshToken.query.filter_by(
+            user_id=user_id,
+            token=old_refresh_token
+        ).first()
+
+        #查抄valid_token_obj是否存在 为的是防止重放攻击，确保一个Refresh Token 只能使用一次，以及保持数据干净
+        if not valid_token_obj:
+            return jsonify({'message': 'Token已经在数据库失效, 请重新登录'}), 401
+        
+        #生成新的token
+        new_access_token = create_access_token(identity=user_id)
+        new_refresh_token = create_refresh_token(identity=user_id)
+
+        db.session.delete(valid_token_obj)
+
+        new_token_obj = RefreshToken(
+            user_id=user_id,
+            token=new_refresh_token
+        )
+        #滚动刷新
+        db.session.add(new_token_obj)
+        db.session.commit()
+
+        #创建响应体
+        response = make_response(jsonify({
+            'refresh_token': new_refresh_token,
+            'access_token': new_access_token,
+            'token_type': 'Bearer'
+        }))
+
+        #注意开发环境是False 生产环境是True
+        response.set_cookie(
+            key='refresh_token',
+            value=new_refresh_token,
+            httponly=True,
+            secure=True,
+            samesite='Lax',
+            max_age=7*24*60*60
+        )
+        return response
+    
+    except jwt.ExpiredSignatureError:
+        return jsonify({'message': 'Refresh token 已过期 请重新登录'}),401
+    except jwt.InvalidTokenError:
+        return jsonify({'message': '无效的 Refresh token'}), 401
+
