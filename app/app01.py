@@ -6,13 +6,12 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from flask import Flask, jsonify
 from flask_sqlalchemy import SQLAlchemy
-from models import db
+from models import db, User
 from access_record.views import access_record
 from logging_config import setup_logging
 setup_logging()
 
 try:
-    from access_record.views import access_record
     print("access_record blueprint imported successfully")
 except Exception as e:
     print(f"Failed to import access_record: {e}")

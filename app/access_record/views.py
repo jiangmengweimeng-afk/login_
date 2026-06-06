@@ -20,6 +20,10 @@ def login_password():
         return jsonify({'code': 400, 'message': '用户名和密码不能为空'}), 400
     
     result = validate_password(username, password)
+    print(f"DEBUG: 验证结果 -> {result}")
+
+    print(f"DEBUG: 用户输入密码 -> {password}")
+
     if not result['success']:
         return jsonify({'code': 401, 'message': result['message']}), 401
     
