@@ -6,24 +6,27 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from flask import Flask, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from flask_jwt_extended import JWTManager
 from models import db, User
-from access_record.views import access_record
+from app.access_record.views import access_record
 from logging_config import setup_logging
 setup_logging()
 
-try:
-    from access_record.views import access_record
-    print("access_record blueprint imported successfully")
-except Exception as e:
-    print(f"Failed to import access_record: {e}")
-    sys.exit(1)
-
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'dev-secret-key-for-testing-onlyS'
-# app.config.from_pyfile('config.py')
+app.config['SECRET_KEY'] = 'dev-secret-key-for-testing-onlys'
 
 env = os.environ.get('FLASK_ENV', 'development')
 app.config.from_object(config[env])
+
+app.config['JWT_SECRET_KEY'] = app.config['SECRET_KEY']
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 3600  # 1小时
+app.config['JWT_REFRESH_TOKEN_EXPIRES'] = 86400 * 7  # 7天
+app.config['JWT_TOKEN_LOCATION'] = ['headers']
+app.config['JWT_HEADER_NAME'] = 'Authorization'
+app.config['JWT_HEADER_TYPE'] = 'Bearer'
+
+jwt = JWTManager(app)
+
 db.init_app(app)
 
 app.register_blueprint(access_record, url_prefix='/api/v1')

@@ -1,7 +1,8 @@
 from flask import Blueprint, jsonify, request, make_response
 from flask_jwt_extended import decode_token, create_access_token, create_refresh_token
 from .service import validate_password, register_user
-from common.auth import login_required, create_access_token, create_refresh_token, generate_token, varify_refresh_token
+from models import db, RefreshToken, User
+from common.auth import login_required, generate_token, varify_refresh_token
 import logging
 import jwt
 
@@ -12,7 +13,6 @@ print(f"Blueprint 'access_record' created successfully")
 
 @access_record.route('/login/password', methods=['POST'])
 def login_password():
-    # print("🔴 后端接收到的原始数据：", request.get_data())
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
@@ -205,32 +205,3 @@ def refresh_access_token():
         return jsonify({'message': 'Refresh token 已过期 请重新登录'}),401
     except jwt.InvalidTokenError:
         return jsonify({'message': '无效的 Refresh token'}), 401
-
-@access_record.route('/api/logout', methods=['POST'])
-def logout_user():
-    cookies_token = request.cookies.get('refresh_token')
-
-    if not cookies_token:
-        return jsonify({'message': 'Successfully logout'}), 200
-    
-    logout_token = RefreshToken.query.filter_by(token=cookies_token).first()
-    
-    if not logout_token:
-        return jsonify({'message': '成功退出'}), 200
-
-    db.session.delete(logout_token)
-    db.session.commit()
-
-    response = make_logout_response(jsonify({
-        'message': '成功创建一个响应体'
-    }))
-
-    response.set_cookie(
-        key='refresh_token',
-        value='',
-        httponly=True,
-        secure=True,
-        samesite='Lax',
-        expires=0
-    )
-    return response
