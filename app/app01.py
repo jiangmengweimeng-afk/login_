@@ -1,14 +1,16 @@
 import sys
 import os
-from config import config
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT_DIR)
 
 from flask import Flask, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_jwt_extended import JWTManager
 from models import db, User
-from app.access_record.views import access_record
+from access_record.views import access_record
+from config import config
 from logging_config import setup_logging
 setup_logging()
 

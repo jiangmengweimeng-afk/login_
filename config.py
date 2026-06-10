@@ -1,5 +1,4 @@
 import os
-from access_record.views import refresh_access_token
 
 SECRET_KEY = os.environ.get('JWT_SECRET_KEY', os.environ.get('SECRET_KEY', 'dev-secret-key-for-testing-only'))
 

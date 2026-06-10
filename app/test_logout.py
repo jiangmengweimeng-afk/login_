@@ -1,4 +1,4 @@
-from app01 import app, db
+from app.app01 import app, db
 from models import User
 
 def init_database():

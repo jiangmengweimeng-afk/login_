@@ -1,14 +1,14 @@
 from flask import Blueprint, jsonify, request, make_response
-from flask_jwt_extended import decode_token, create_access_token, create_refresh_token
+from flask_jwt_extended import decode_token, create_access_token, create_refresh_token, jwt_required, get_jwt_identity
 from .service import validate_password, register_user
 from models import db, RefreshToken, User
-from common.auth import login_required, generate_token, varify_refresh_token
+from app.common.auth import login_required, generate_token, varify_refresh_token
 import logging
 import jwt
 
 logger = logging.getLogger(__name__)
 
-access_record = Blueprint('access_record', __name__, url_prefix='/access_record')
+access_record = Blueprint('access_record', __name__)
 print(f"Blueprint 'access_record' created successfully")
 
 @access_record.route('/login/password', methods=['POST'])
@@ -28,8 +28,8 @@ def login_password():
         return jsonify({'code': 401, 'message': result['message']}), 401
     
     user = result['user']
-    access_token = create_access_token(user['id'])
-    refresh_token = create_refresh_token(user['id'])
+    access_token = create_access_token(identity=str(user['id']))
+    refresh_token = create_refresh_token(identity=str(user['id']))
 
     response = make_response(jsonify({
         'access_token': access_token,
@@ -136,14 +136,21 @@ def register():
         return jsonify({'code': 400, 'message': 'others reason'}), 400
     
 @access_record.route('/profile', methods=['GET'])
-@login_required
+@jwt_required()
 def profile():
-    user = request.current_user
-    return jsonify({
-        'message': f'你好 欢迎 {user["username"]} 来到后台 dashboard',
-        'user': user,
-        'token': request.headers.get('Authorization')
+    current_user_id = get_jwt_identity()
+    user = User.query.get(int(current_user_id))
+    # user = request.current_user
+    if user:
+        return jsonify({
+            'message': f'你好 欢迎 {user.username} 来到后台 dashboard',
+            'user': {
+                'id': user.id,
+                'username': user.username
+            },
+            'token': request.headers.get('Authorization')
         }), 200
+    return jsonify({'code': 404, 'message': '用户不存在'}), 404
 
 # @login_required
 @access_record.route('/api/refresh', methods=['POST'])
@@ -205,3 +212,30 @@ def refresh_access_token():
         return jsonify({'message': 'Refresh token 已过期 请重新登录'}),401
     except jwt.InvalidTokenError:
         return jsonify({'message': '无效的 Refresh token'}), 401
+
+@access_record.route('/api/logout', methods=['POST'])
+def logout_user():
+    cookie_token = request.cookies.get('refresh_token')
+
+    if not cookie_token:
+        return jsonify({'message': 'successfully logout'}), 200
+    
+    logout_token = RefreshToken.query.filter_by(token=cookie_token).first()
+
+    if not logout_token:
+        return jsonify({'message': '成功退出'}), 200
+    
+    db.session.delete(logout_token)
+    db.session.commit()
+
+    response = make_response(jsonify({'message': '成功退出'}))
+
+    response.set_cookie(
+        key='refresh_token',
+        value='',
+        httponly=True,
+        secure=True,
+        samesite='Lax',
+        expires=0
+    )
+    return response

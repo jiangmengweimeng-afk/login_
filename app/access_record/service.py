@@ -11,7 +11,7 @@ SECRET_KEY = os.environ.get('JWT_SECRET_KEY', os.environ.get('SECRET_KEY', 'dev-
 
 def validate_password(username, password):
     user = User.query.filter_by(username=username).first()
-    if user and check_password_hash(user.password, password):
+    if user and check_password_hash(user.password_hash, password):
         logger.info(f'验证成功 - 用户：{username}')
         return {
             'success': True,
